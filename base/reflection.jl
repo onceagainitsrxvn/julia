@@ -1084,23 +1084,43 @@ function parentmodule(@nospecialize(f), @nospecialize(types))
 end
 
 """
-    hasmethod(f, Tuple type; world = typemax(UInt)) -> Bool
+    hasmethod(f, t::Type{<:Tuple}[, kwnames]; world=typemax(UInt)) -> Bool
 
 Determine whether the given generic function has a method matching the given
 `Tuple` of argument types with the upper bound of world age given by `world`.
+If a tuple of keyword argument names `kwnames` is provided, this also checks
+whether the method of `f` matching `t` has the given keyword argument names.
 
 See also [`applicable`](@ref).
+
+!!! compat "Julia 1.2"
+    Providing keyword argument names requires Julia 1.2 or later.
 
 # Examples
 ```jldoctest
 julia> hasmethod(length, Tuple{Array})
 true
+
+julia> hasmethod(sum, Tuple{Function,Array}, (:dims,))
+true
+
+julia> hasmethod(sum, Tuple{Function,Array}, (:dims, :hello))
+false
 ```
 """
 function hasmethod(@nospecialize(f), @nospecialize(t); world = typemax(UInt))
     t = to_tuple_type(t)
     t = signature_type(f, t)
     return ccall(:jl_method_exists, Cint, (Any, Any, UInt), typeof(f).name.mt, t, world) != 0
+end
+
+function hasmethod(@nospecialize(f), @nospecialize(t), kwnames::Tuple{Vararg{Symbol}}; world=typemax(UInt))
+    hasmethod(f, t, world=world) || return false
+    m = which(f, t)
+    max_world(m) <= world || return false
+    kws = kwarg_decl(m, Core.kwftype(typeof(f)))
+    isempty(kws) === isempty(kwnames) || return false
+    return isempty(setdiff(kws, kwnames))
 end
 
 """
